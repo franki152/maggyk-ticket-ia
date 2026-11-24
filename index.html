@@ -1,9 +1,12 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MAGGYK TICKET IA</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
 * {
@@ -17,18 +20,33 @@ body {
     text-align: center;
 }
 header {
-    padding: 35px 20px;
+    padding: 30px 20px;
     background: #151520;
     border-bottom: 2px solid #a855f7;
 }
 h1 {
     color: #c084fc;
-    letter-spacing: 4px;
+    letter-spacing: 5px;
+    font-size: 36px;
+    margin: 10px;
+}
+h2 {
+    margin: 10px;
 }
 .panel {
     max-width: 450px;
-    margin: 30px auto;
+    margin: 25px auto;
     padding: 25px;
+}
+input {
+    width: 100%;
+    padding: 16px;
+    margin: 8px 0;
+    background: #191923;
+    border: 1px solid #454052;
+    border-radius: 10px;
+    color: white;
+    font-size: 16px;
 }
 button {
     width: 100%;
@@ -45,10 +63,29 @@ button {
 button:hover {
     background: #9333ea;
 }
+button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.salir {
+    background: #30303b;
+}
+#mensaje {
+    color: #fca5a5;
+    font-size: 14px;
+}
+#estado {
+    color: #86efac;
+    font-size: 14px;
+}
+[hidden] {
+    display: none !important;
+}
 footer {
     color: #999;
     padding: 25px;
     font-size: 13px;
+    line-height: 1.6;
 }
 </style>
 </head>
@@ -61,13 +98,46 @@ footer {
     <p>Sistema inteligente de entradas</p>
 </header>
 
-<div class="panel">
-    <button>Crear evento</button>
-    <button>Generar entradas QR</button>
-    <button>Gestionar entradas</button>
-    <button>Escanear entrada</button>
-    <button>Control de consumiciones</button>
-    <button>Estadísticas y ventas</button>
+<div class="panel" id="login">
+    <h2>Acceso privado</h2>
+    <p>Panel de administración</p>
+
+    <form id="formLogin">
+        <input type="email" id="email"
+        placeholder="Correo electrónico"
+        autocomplete="username" required>
+
+        <input type="password" id="password"
+        placeholder="Contraseña"
+        autocomplete="current-password" required>
+
+        <button type="submit" id="entrar" disabled>
+            Iniciar sesión
+        </button>
+    </form>
+
+    <p id="mensaje" role="status">
+        Comprobando conexión...
+    </p>
+</div>
+
+<div class="panel" id="menu" hidden>
+
+    <p id="estado">Administrador conectado</p>
+    <h2>Panel de control</h2>
+
+    <button disabled>Crear evento</button>
+    <button disabled>Generar entradas QR</button>
+    <button disabled>Gestionar entradas</button>
+    <button disabled>Escanear entrada</button>
+    <button disabled>Control de consumiciones</button>
+    <button disabled>Estadísticas y ventas</button>
+
+    <p>Funciones pendientes de activación.</p>
+
+    <button class="salir" id="salir">
+        Cerrar sesión
+    </button>
 </div>
 
 <footer>
@@ -75,6 +145,126 @@ footer {
     Calle de Coslada, 11 - Madrid<br>
     Sistema de gestión de entradas
 </footer>
+
+<script>
+const SUPABASE_URL =
+"https://evmzmqcnntctkeqepvcn.supabase.co";
+
+const SUPABASE_KEY =
+"sb_publishable_P6F_n6TQMh80aVHo0AoP2A_gFW7aNV0";
+
+const login = document.getElementById("login");
+const menu = document.getElementById("menu");
+const mensaje = document.getElementById("mensaje");
+const entrar = document.getElementById("entrar");
+
+let cliente;
+
+function mostrarLogin(texto = "") {
+    menu.hidden = true;
+    login.hidden = false;
+    mensaje.textContent = texto;
+}
+
+async function verificarAdministrador() {
+    const { data, error } =
+        await cliente.rpc("es_admin");
+
+    if (error || data !== true) {
+        mostrarLogin(
+            "Acceso denegado o permisos no verificados."
+        );
+        await cliente.auth.signOut();
+        return;
+    }
+
+    mensaje.textContent = "";
+    login.hidden = true;
+    menu.hidden = false;
+}
+
+document.getElementById("formLogin")
+.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    entrar.disabled = true;
+    mensaje.textContent = "Comprobando acceso...";
+
+    try {
+        const email =
+            document.getElementById("email").value.trim();
+
+        const password =
+            document.getElementById("password").value;
+
+        const { error } =
+            await cliente.auth.signInWithPassword({
+                email,
+                password
+            });
+
+        document.getElementById("password").value = "";
+
+        if (error) {
+            mostrarLogin(
+                "No se pudo iniciar sesión. Revisa tus datos."
+            );
+            return;
+        }
+
+        await verificarAdministrador();
+
+    } catch (error) {
+        mostrarLogin("Error de conexión. Inténtalo de nuevo.");
+    } finally {
+        entrar.disabled = false;
+    }
+});
+
+document.getElementById("salir")
+.addEventListener("click", async () => {
+    menu.hidden = true;
+
+    const { error } = await cliente.auth.signOut();
+
+    mostrarLogin(error
+        ? "No se pudo cerrar la sesión completamente."
+        : "Sesión cerrada correctamente."
+    );
+});
+
+async function iniciar() {
+    try {
+        cliente = window.supabase.createClient(
+            SUPABASE_URL,
+            SUPABASE_KEY
+        );
+
+        const { data, error } =
+            await cliente.auth.getSession();
+
+        if (error) throw error;
+
+        cliente.auth.onAuthStateChange((evento) => {
+            if (evento === "SIGNED_OUT") {
+                mostrarLogin();
+            }
+        });
+
+        mensaje.textContent = "";
+
+        if (data.session) {
+            await verificarAdministrador();
+        }
+
+        entrar.disabled = false;
+
+    } catch (error) {
+        mostrarLogin("No se pudo conectar con Supabase.");
+    }
+}
+
+iniciar();
+</script>
 
 </body>
 </html>
